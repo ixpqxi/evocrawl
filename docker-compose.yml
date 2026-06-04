@@ -1,0 +1,65 @@
+services:
+  mysql-test:
+    image: mysql:5.7-debian
+    container_name: mysql-test
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    command:
+      - mysqld
+      - --datadir=/var/lib/mysql
+      - --server-id=1
+      - --log-bin=/var/lib/mysql/mysql-bin.log
+      - --binlog-ignore-db=mysql
+      - --binlog-ignore-db=information_schema
+    volumes:
+      - ./mysql_storage:/var/lib/mysql
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  evocrawl:
+    build:
+      context: .
+    image: evocrawl:local
+    container_name: evocrawl
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      mysql-test:
+        condition: service_healthy
+    environment:
+      APPNAME: ${APPNAME:-kanboard}
+      MODE: ${MODE:-Crawler}
+      INPUT: ${INPUT:-1}
+      RESTART_KAFKA: ${RESTART_KAFKA:-1}
+      START_CRAWLER: ${START_CRAWLER:-1}
+      TARGET_URL: ${TARGET_URL:-http://host.docker.internal:8300/}
+      LOGIN_CRAWLER_USER: ${LOGIN_CRAWLER_USER:-admin}
+      LOGIN_PASSWORD: ${LOGIN_PASSWORD:-admin}
+      LOGIN_TOKEN_USER: ${LOGIN_TOKEN_USER:-admin}
+      LOGIN_FILTER_USER: ${LOGIN_FILTER_USER:-userA}
+      LOGIN_DETECTOR_USER: ${LOGIN_DETECTOR_USER:-admin}
+      LOGIN_USER_B: ${LOGIN_USER_B:-userB}
+      LOGIN_TOKEN_NAME: ${LOGIN_TOKEN_NAME:-sid}
+      LOGIN_FOLDER: ${LOGIN_FOLDER:-}
+      LOGIN_USERNAME_SELECTOR: ${LOGIN_USERNAME_SELECTOR:-}
+      LOGIN_USERNAME_NTH: ${LOGIN_USERNAME_NTH:-}
+      LOGIN_PASSWORD_SELECTOR: ${LOGIN_PASSWORD_SELECTOR:-}
+      LOGIN_PASSWORD_NTH: ${LOGIN_PASSWORD_NTH:-}
+      LOGIN_SUBMIT_SELECTOR: ${LOGIN_SUBMIT_SELECTOR:-}
+      LOGIN_SUBMIT_NTH: ${LOGIN_SUBMIT_NTH:-}
+      LOGIN_POST_WAIT_MS: ${LOGIN_POST_WAIT_MS:-1000}
+      TESTCAFE_BROWSER: ${TESTCAFE_BROWSER:-chrome --headless --no-sandbox --disable-dev-shm-usage}
+      NODE_OPTIONS: ${NODE_OPTIONS:---max-old-space-size=5120}
+    volumes:
+      - ./data:/opt/evocrawl/data
+      - ./inputs_detection/data:/opt/evocrawl/inputs_detection/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    shm_size: "2gb"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

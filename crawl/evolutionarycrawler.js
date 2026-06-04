@@ -92,6 +92,7 @@ else if(BLIND == 2){
 const interactions = ['click', 'typetext', 'uploadfile', 'select', 'iframe'];
 
 var request_log_count = 0;
+let request_logs = [];
 
 let cache = {page: "", seq: 0, action: "", stat: "", href: "", navSet: 0, log: 0};
 let replay_cache = {seq: 0, stat: "", visibility: false};
@@ -135,6 +136,19 @@ const printObject = function(obj, name, folder=DATA_FOLDER) {
     fs.writeFileSync(folder+USER_MODE+'_'+name, JSON.stringify(obj, null, 2) , 'utf-8');
 }
 
+const saveRequestLogs = function() {
+    printObject(request_logs, "ev_request_logs.json");
+}
+
+const recordRequestLogs = function(logs=[]) {
+    if(logs.length == 0){
+        return;
+    }
+    let deepcopy = JSON.parse(JSON.stringify(logs));
+    request_logs = request_logs.concat(deepcopy);
+    saveRequestLogs();
+}
+
 const appendObjecttoFile = async function(obj, name) {
     // name is filename that contains array of obj
     var fs = require('fs');
@@ -168,8 +182,12 @@ const saveConfig = () => {
 
 // Returns the number of requests logged since last calling this function
 const checkRequestLogs = function () {
+    if (logger.requests.length < request_log_count){
+        request_log_count = 0;
+    }
     if (request_log_count != logger.requests.length){
         var num_req_generated = logger.requests.length - request_log_count;
+        recordRequestLogs(logger.requests.slice(request_log_count));
         request_log_count = logger.requests.length;
         return num_req_generated
     }

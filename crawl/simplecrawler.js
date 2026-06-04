@@ -80,6 +80,7 @@ let form_texts = {};
 const elementsOfInterest = ['input','button','textarea','select','a'];
 
 var request_log_count = 0;
+let request_logs = [];
 let navigationSet = [];
 let nav_edge = "";
 const heavy_pages = login_info["heavy_pages"];
@@ -88,9 +89,7 @@ const logout_keywords = login_info["logout_keywords"];
 const logger = RequestLogger(request => {
         // console.log(request.headers.accept)
         const hostname = new URL(request.url).hostname; const basehostname = new URL(baseURI).hostname;
-        return (hostname===basehostname) 
-            && ( /text\/html/.test(request.headers.accept) || /text\/plain/.test(request.headers.accept) 
-            /*|| /image\//.test(request.headers.accept)*/ || /application\/json/.test(request.headers.accept))
+        return (hostname===basehostname)
     },
     {
         logRequestHeaders: true,
@@ -188,6 +187,20 @@ const printObject = function(obj, name, folder=DATA_FOLDER) {
     fs.writeFileSync(folder+USER_MODE+'_'+name, JSON.stringify(obj, null, 2) , 'utf-8');
 }
 
+const saveRequestLogs = function() {
+    printObject(request_logs, "request_logs.json");
+    printObject(request_logs, "sim_request_logs.json");
+}
+
+const recordRequestLogs = function(logs=[]) {
+    if(logs.length == 0){
+        return;
+    }
+    let deepcopy = JSON.parse(JSON.stringify(logs));
+    request_logs = request_logs.concat(deepcopy);
+    saveRequestLogs();
+}
+
 const saveConfig = () => {
     let timeStamp = new Date().getTime();
     printObject({
@@ -220,8 +233,12 @@ const appendObjecttoFile = async function(obj, name) {
 
 // Returns the number of requests logged since last calling this function
 const checkRequestLogs = function () {
+    if (logger.requests.length < request_log_count){
+        request_log_count = 0;
+    }
     if (request_log_count != logger.requests.length){
-        var num_req_generated = logger.requests.length - request_log_count ;
+        var num_req_generated = logger.requests.length - request_log_count;
+        recordRequestLogs(logger.requests.slice(request_log_count));
         request_log_count = logger.requests.length
         return num_req_generated
     }
@@ -801,7 +818,7 @@ const form_submission_check = async function(page_html, form_url, form_method, l
 
 const crawl_forms = async function(t, currentseed, attack=0){
     logger.clear();
-    //request_log_count = 0
+    request_log_count = 0
     let req_count = checkRequestLogs();
     let element_info = {};
     if(attack == 0) console.log("submit forms")
@@ -872,6 +889,7 @@ const crawl_forms = async function(t, currentseed, attack=0){
             /* let end_list = utils.extractTextFromHTML(page_html, 1);
             printObject(end_list, "end_list.json"); */
             await form_submission_check(page_html, form_url, form_method, log_pageurl)
+            checkRequestLogs();
             /*req_count = checkRequestLogs();
             let deepcopy = JSON.parse(JSON.stringify(logger.requests.slice(logger.requests.length-req_count)));
             for(let j=0; j<req_count; j++) {
@@ -989,7 +1007,7 @@ const crawl_links = async function(t, currentseed){
     let currentpageurl = currentseed.key;
     console.log("crawl static links");
     await navigate_wrap(t, currentpageurl);
-    printObject(logger.requests, "request_logs.json")
+    checkRequestLogs();
     let tmp_html = await getPageHTML();
     printObject(tmp_html, "tmp_html.json");
     let js_flag = await event_executor(t, currentseed);

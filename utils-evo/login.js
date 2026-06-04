@@ -2,8 +2,100 @@ import { utils } from 'rrweb';
 import { Selector, RequestLogger, ClientFunction, Role } from 'testcafe';
 import element_AZ from '../utils-evo/element'
 const utileva = require('../utils-evo/utils');
+const login_info = require('../utils-evo/login_information.json');
+
+const getConfiguredLoginProfile = function(APPNAME) {
+    if(!login_info.login_profiles){
+        return null;
+    }
+    return login_info.login_profiles[APPNAME] || login_info.login_profiles.default || null;
+}
+
+const configuredBoolean = function(value, defaultValue) {
+    if(value === undefined){
+        return defaultValue;
+    }
+    if(typeof value === "boolean"){
+        return value;
+    }
+    if(typeof value === "string"){
+        const normalizedValue = value.toLowerCase();
+        return !["false", "0", "no", "off"].includes(normalizedValue);
+    }
+    return Boolean(value);
+}
+
+const resolveConfiguredValue = function(value, replacements) {
+    if(value === undefined || value === null){
+        return "";
+    }
+    if(typeof value !== "string"){
+        return value;
+    }
+    return value.replace(/\$(url|username|password)/g, function(match, key){
+        return replacements[key] || "";
+    });
+}
+
+const configuredSelector = function(step) {
+    if(!step.selector){
+        throw new Error("Configured login step is missing selector");
+    }
+    let selector = Selector(step.selector);
+    if(step.nth !== undefined && step.nth !== ""){
+        const nth = Number(step.nth);
+        if(Number.isNaN(nth)){
+            throw new Error("Configured login selector nth must be a number");
+        }
+        selector = selector.nth(nth);
+    }
+    return selector;
+}
+
+const runConfiguredLogin = async function(t, APPNAME, url, username, password) {
+    const profile = getConfiguredLoginProfile(APPNAME);
+    if(!profile){
+        return false;
+    }
+    if(!Array.isArray(profile.steps) || profile.steps.length === 0){
+        throw new Error("Configured login profile for " + APPNAME + " has no steps");
+    }
+
+    const replacements = {url: url, username: username, password: password};
+    for(const step of profile.steps){
+        const action = (step.action || "").toLowerCase();
+        if(action === "navigate"){
+            await t.navigateTo(resolveConfiguredValue(step.url || "$url", replacements));
+        }
+        else if(action === "type"){
+            const text = resolveConfiguredValue(step.value, replacements);
+            await t.typeText(configuredSelector(step), text, {
+                replace: configuredBoolean(step.replace, true),
+                paste: configuredBoolean(step.paste, true)
+            });
+        }
+        else if(action === "click"){
+            await t.click(configuredSelector(step));
+        }
+        else if(action === "wait"){
+            const ms = Number(step.ms || step.timeout || 0);
+            if(Number.isNaN(ms)){
+                throw new Error("Configured login wait ms must be a number");
+            }
+            await t.wait(ms);
+        }
+        else{
+            throw new Error("Unsupported configured login action: " + action);
+        }
+    }
+    return true;
+}
 
 const login = async function(t, APPNAME, url, username="admin", password=""){
+    if(await runConfiguredLogin(t, APPNAME, url, username, password)){
+        return;
+    }
+
     const USER_MODE = 'a';
     const AUTO_MODE = 0;
     if(AUTO_MODE == 0){
